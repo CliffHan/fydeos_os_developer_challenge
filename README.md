@@ -2,7 +2,7 @@
 
 
 
-Here're steps I've taken to finish FydeOS OS developer challenge.
+Here're steps I've taken to finish FydeOS OS developer challenge, and results.
 
 
 
@@ -12,7 +12,7 @@ Here're steps I've taken to finish FydeOS OS developer challenge.
 
 I've already have 2 VPS running on Vultr, setup by me but owned by my friends. And I use v2ray as the proxy client.
 
-The bandwidth ISP provided  is only 100Mbps, looks like I cannot get good ping and speed. I didn't tweak those vps before because I just need google to search.
+The bandwidth ISP provided  is only 100Mbps, looks like I cannot get good ping and speed. I didn't tweak those vps before because I just need google to search, no need for performance.
 
 ![](./proxy_ping.png)
 
@@ -99,10 +99,13 @@ sudo chmod +t /dev/shm
 # build test image
 ./build_image --board=${BOARD} --noenable_rootfs_verification test
 
-# TODO: convert image to qemu raw image
-mkdir ~/chromiumos/images
-./image_to_vm.sh --from=/mnt/host/source/src/build/images/${BOARD}/latest/ --test_image
+# convert image to qemu raw image
+./image_to_vm.sh --from=/mnt/host/source/src/build/images/${BOARD}/latest/ --board=${BOARD} --test_image
 ```
+
+
+
+Cannot get Google API keys, looks like my account was disabled from using google cloud console. I sent email to google, they replied, telling me it usually takes 2 business days or longer.
 
 
 
@@ -112,7 +115,7 @@ Met an error during the build_package process, looks like network error:
 
 
 
-The build process stopped outputting later, no response when pressing enter key, not sure if it's caused by the previous network error. I broke the process and re-executed original `./build_image` script. It really took some time.
+The build process stopped outputting later, no response when pressing enter key, not sure if it's caused by the previous network error. I broke the process and re-executed original `./build_packages` script. It really took some time.
 
 Here's the build_packages result.
 
@@ -124,11 +127,11 @@ And the build_image result.
 
 Generated vm image at: `/mnt/host/source/src/build/images/amd64-generic/R96-14268.84.2022_05_30_1804-a1/chromiumos_qemu_image.bin`.
 
-To be honest, it's really NOT difficult in this part. But it took longer than I thought. I think it will be better with more powerful PC with ubuntu installed directly (not via WSL2), and network speed affects the build time obviously as well.
+To be honest, it's really NOT difficult in this part. But it took longer than I thought. I think it will be better with more powerful PC with ubuntu installed directly (not via WSL2), and network speed affects the build time obviously as well. But the best method is to dig what the script does, and do some preparation or some modification on the script before build.
 
 
 
-**Run image in qemu**
+**Confirmed vm image problem and redo a clean build**
 
 As learned from [Google's document](https://chromium.googlesource.com/chromiumos/docs/+/2efe4b73ea2109870480a3d6148024686faf1e6e/cros_vm.md). VM could be started with this command.
 
@@ -144,7 +147,7 @@ It will start a vm which could be connected via VNC Viewer in Windows. But it ke
 
 
 
-I haven't any experience using qemu. So I tried to install qemu for windows then double check the corresponding image path in windows, it is:  `\\wsl.localhost\Ubuntu\home\cliff\Workspace\chromiumos\src\build\images\amd64-generic\R96-14268.84.2022_05_30_1804-a1\chromiumos_qemu_image.bin`.
+I haven't any experience using qemu. So I tried to install qemu for windows to double check the image, the corresponding image path in windows is:  `\\wsl.localhost\Ubuntu\home\cliff\Workspace\chromiumos\src\build\images\amd64-generic\R96-14268.84.2022_05_30_1804-a1\chromiumos_qemu_image.bin`.
 
 Then I started qemu for windows with this command:
 
@@ -153,48 +156,134 @@ Then I started qemu for windows with this command:
 .\qemu-system-x86_64.exe -drive file="\\wsl.localhost\Ubuntu\home\cliff\Workspace\chromiumos\src\build\images\amd64-generic\R96-14268.84.2022_05_30_1804-a1\chromiumos_qemu_image.bin,format=raw,index=0,media=disk"
 ```
 
-Qemu for windows hangs at `Booting the kernel.` line.
+Qemu for windows hangs at `Booting the kernel.` line, just like the previous case.
 
 ![](./qemu_boot_hang.png)
 
 
 
-I guess I got a wrong image. Maybe need to re-compile.
+Guess I got a wrong qemu raw image, I used `--cleanbuild` before sleep to completely restart the build packages process, but no luck for me, saw some errors on different packages in the morning.
+
+When error happens, I think this command could be used to emerge one single package, e.g.
+
+``` shell
+emerge-amd64-generic chromeos-base/chrome-icu
+```
+
+But this time, I cannot get `image_to_vm.sh` normally generate the qemu raw image this time. Got this error:
+
+``` shell
+mount: /mnt/host/source/src/build/images/amd64-generic/R96-14268.84.2022_05_31_0915-a1/stateful_dir: wrong fs type, bad option, bad superblock on /dev/loop0p1, missing codepage or helper program, or other error.
+11:22:18 ERROR   : mount failed: image=/mnt/host/source/src/build/images/amd64-generic/R96-14268.84.2022_05_31_0915-a1/vm_temp_image.bin device=/dev/loop0p1 target=/mnt/host/source/src/build/images/amd64-generic/R96-14268.84.2022_05_31_0915-a1/stateful_dir format=ext4 ro/rw=rw
+Current loopback device status:
+    /dev/loop0: [2080]:2646859 (/mnt/host/source/src/build/images/amd64-generic/R96-14268.84.2022_05_31_0915-a1/vm_temp_image.bin)
+```
+
+And I found something in dmesg:
+
+``` 
+[  296.516361] EXT4-fs (loop1p3): mounting ext2 file system using the ext4 subsystem
+[  296.520852] EXT4-fs (loop1p3): mounted filesystem without journal. Opts: (null)
+[  297.679618] EXT4-fs (loop0p3): mounting ext2 file system using the ext4 subsystem
+[  297.684981] EXT4-fs (loop0p3): mounted filesystem without journal. Opts: (null)
+[  297.690271] EXT4-fs (loop0p1): The kernel was not built with CONFIG_QUOTA and CONFIG_QFMT_V2
+[  913.494619] EXT4-fs (loop1p3): mounting ext2 file system using the ext4 subsystem
+[  913.503539] EXT4-fs (loop1p3): mounted filesystem without journal. Opts: (null)
+[  914.750599] EXT4-fs (loop0p3): mounting ext2 file system using the ext4 subsystem
+[  914.759467] EXT4-fs (loop0p3): mounted filesystem without journal. Opts: (null)
+[  914.764939] EXT4-fs (loop0p1): The kernel was not built with CONFIG_QUOTA and CONFIG_QFMT_V2
+```
+
+I guess my file system is broken now. No further info from [this WSL issue](https://github.com/microsoft/WSL/issues/8083). Re-executed `build_image` OK, but `image_to_vm.sh` still failed. I may need to check my WSL environment later.
+
+
+
+**Run image in qemu**
+
+Got cros_vm run with command, and connected with vnc, not sure if it's my latest locally built vm image:
+
+``` shell
+cros_vm --start --board ${BOARD} --qemu-args " -vnc :0"
+```
+
+![](./vnc_boot_normal.png)
+
+
+
+It's weird that cros_vm failed to start ssh client. As the [document](https://chromium.googlesource.com/chromiumos/docs/+/master/cros_vm.md#SSH-into-the-VM) said, I used this command in shell for ssh to connect:
+
+``` shell
+# (shell), password is test0000
+ssh root@localhost -p 9222
+```
+
+![](./ssh_root_login.png)
+
+
+
+At last, it looks like my last generated test_image could directly run in cros_vm:
+
+``` shell
+cros_vm --start --image-path=../build/images/amd64-generic/R96-14268.84.2022_05_31_1610-a1/chromiumos_test_image.bin --board=amd64-generic --qemu-args " -vnc :0"
+```
+
+Internet connection not stable, I could only browse as guest.
+
+![](./vnc_browsing_guest.png)
+
+
+
+**Some Notes**
+
+Every time I start `build_packages` process, it took hours on my machine, much longer than the 90 minutes stated in document. Sometimes it just keeps outputting something not that informative like this:
+
+``` shell
+>>> 22:03:41 Still building (chromeos-base/chrome-icu-96.0.4664.209_rc-r1:0/96.0.4664.209_rc-r1::chromiumos, ebuild scheduled for merge to '/build/amd64-generic/') after 1:04:59.943283
+```
+
+I took quite some time to learn that the build system was executing some gclient operations which takes a lot time, but I don't know how to skip this process yet.
 
 
 
 ## 2. Kernel replacement
 
-Did a quick search and found [this article](https://colinxu.wordpress.com/2020/08/06/build-chromium-os%E2%80%8E-for-qemu/). As it commented, looks like build file for kernel 5.10 is already in ` ~/trunk/src/third_party/chromiumos-overlay/sys-kernel/chromeos-kernel-5_10/`, so I think just need to do as following sequence (NO TIME TO TEST YET):
+Did a quick search and found [this article](https://colinxu.wordpress.com/2020/08/06/build-chromium-os%E2%80%8E-for-qemu/). As it commented, looks like build file for kernel 5.10 is already in ` ~/trunk/src/third_party/chromiumos-overlay/sys-kernel/chromeos-kernel-5_10/`, so I think just need to do as following sequence:
 
 1. modify the kernel version in `~/trunk/src/overlays/overlay-amd64-generic/profiles/base/make.defaults`, change kernel-4_14 to kernel-5_10
-2. unemerge old kernel
-3. build new kernel
-4. build image again
+2. unmerge old kernel
+2. build new kernel
+4. rebuild image
 
 Command to be used in step 2/3/4:
 
 ``` shell
 # (inside)
 export BOARD=amd64-generic
-emerge-amd64-generic –unmerge sys-kernel/chromeos-kernel-4_14
+# unmerge kernel 4.14 first
+emerge-amd64-generic --unmerge sys-kernel/chromeos-kernel-4_14
+# build kernel 5.10
 emerge-amd64-generic sys-kernel/chromeos-kernel-5_10
-./build_image --board=${BOARD} --noenable_rootfs_verification test
+# TODO: build packages and image again with new kernel, no time to test yet
 ```
 
-Then use the new image for test.
+The last build process were not tested. Till now, I found these errors:
+
+1. build_image directly will fail
+2. build_packages report build error for package ` chromeos-base/cryptohome`, looks like some configuration related to `direncription_allow_v2` need to be enabled, edit the ebuild file and it works
 
 
 
 ## 3. CrOS devserver in docker
-`start_devserver` will report permission error, need to specify writable `static_dir`. For example:
+Run `start_devserver` directly will get an permission error, need to specify a writable `static_dir`. For example:
 
 ``` shell
 # (inside)
-start_devserver --static_dir=./static
+start_devserver --static_dir .
 ```
 
-I got another warning, guess that's because of "python code not up-to-date".
+This command creates a `static` dir in current directory, and put some files under it.
+
+I got another warning, guess that's just because of "python code not up-to-date". No need to handle it.
 
 ```
 [30/May/2022:22:02:36] ENGINE Listening for SIGTERM.
@@ -231,27 +320,49 @@ INFO:cherrypy.error:[30/May/2022:22:02:37] ENGINE Bus STARTED
 
 ![](./local_dev_server.png)
 
-Although it's running, I'm not sure what it serves, and if it works properly. I think I may need to tweak some parameters to "link" the "dev_server" with the environment or running instance.
+Although the devserver is running, I'm not very sure about what it serves, and if it works properly.
 
-The document looks not up-to-date with the actual script, for example, the `-t` parameter is already marked as deprecated when I checked the output of `start_devserver --help`, but it's still listed in the [document](https://chromium.googlesource.com/chromiumos/chromite/+/refs/heads/master/docs/devserver.md).
+I guess I may need to update files in `static_dir`, update parameters chromium os image, and run the chromium os instance to make it communicate with devserver. Just like task 4 did.
+
+BTW, the document looks not up-to-date with the actual script, for example, the `-t` parameter is already marked as deprecated when I checked the output of `start_devserver --help`, but it's still listed in the [document](https://chromium.googlesource.com/chromiumos/chromite/+/refs/heads/master/docs/devserver.md).
+
+I didn't see docker part in the document. But the devserver looks like a standalone function, and should be easily implemented into a Dockerfile.
+
+I also saw `~/chromiumos/src/platform/factory/setup/cros_docker.sh`, which pulls a docker image from [here](https://storage.googleapis.com/chromeos-localmirror/distfiles/docker-1.10.3.tgz). That's a factory server docker, so that may work as well.
 
 
 
 ## 4. Connecting the dots
 
+Didn't actually do that, but I think the workflow means:
 
+1. Change config in the chromium os image then it could connect to local devserver when it's running
+2. Use `./cros_generate_update_payload` in cros_sdk to create the OTA package, reference [here](https://chromium.googlesource.com/aosp/platform/system/update_engine/+/HEAD/README.md#Update-Payload-Generation)
+3. Make the OTA package to be served with the devserver
+4. Run cmd in chromium os (via ssh) then it could connect the devserver and get the update
 
 
 
 ## 5. Documentation and other
 
-Every time I start `build_packages` process, it took hours on my machine, much longer than the 90 minutes stated in document. Sometimes it just keeps outputting something not that informative like this:
+Here's summary of what I did in this challenge:
 
-``` shell
->>> 22:03:41 Still building (chromeos-base/chrome-icu-96.0.4664.209_rc-r1:0/96.0.4664.209_rc-r1::chromiumos, ebuild scheduled for merge to '/build/amd64-generic/') after 1:04:59.943283
-```
+* successfully downloaded depot_tools and chromium os source code
+* finished setup of chroot environment
+* first time build, generated image and vm raw image, but failed to run in vm
+* second time clean build, generated image, but failed to generate vm raw image because of loop device error
+* started cros_vm and default vm image, connected with vnc and ssh
+* third time build image only, no vm raw image, cros_vm start ok, vnc and ssh ok
+* unmerged kernel 4.14, and emerged kernel 5.10, failed to generate updated image
+* started devserver in chroot only
+* gave unconfirmed speculation on the connection between devserver and chromium os instance
 
-I don't know if that's because my network is poor? or my PC is not powerful enough? To answer that question, I need some comparison which I cannot do right now.
+
+
+What I learned:
+
+* I need to upgrade my network later
+* WSL2 environment seems not very suitable for chromium os development
 
 
 
